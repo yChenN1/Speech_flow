@@ -1,0 +1,25 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# wandb 日志
+wandb/
+
+# 运行生成文件
+slurm_run/
+results/
+checkpoints/
+
+
+# 数据处理缓存
+*.tmp
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 你自己的其他运行中间产物（按需添加）
+
