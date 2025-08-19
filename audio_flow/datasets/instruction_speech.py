@@ -43,7 +43,7 @@ class INSTRUCTION_SPEECH(Dataset):
         self.crop = crop
         self.max_duration = max_duration
         self.audio_base_path = audio_base_path
-        self.tokenizer = T5Tokenizer.from_pretrained('t5-base')
+        self.tokenizer = T5Tokenizer.from_pretrained('/mnt/bn/tanman-yg/chenqi/code/Speech_flow/pretrained/t5-base/snapshots/a9723ea7f1b39c1eae772870f3b547bf6ef7e6c1')
 
         # self.audio_list = load_dataset(
         #     'parquet',
@@ -51,7 +51,10 @@ class INSTRUCTION_SPEECH(Dataset):
         #     split='train',
         # )
         self.audio_list = pd.read_csv(self.root).to_dict(orient='records')
-        self.base_path = '/mnt/fast/nobackup/scratch4weeks/yc01815/Speech_gen_dataset/Expresso_ears_dataset_train'
+        if self.split == "train":
+            self.base_path = '/mnt/bn/tanman-yg/chenqi/datas/InstructSpeech'
+        else:
+            self.base_path = '/mnt/bn/tanman-yg/chenqi/datas/InstructSpeech_eval'
 
     def pad_to_length(self, waveform: np.ndarray, target_len: int = 220500) -> np.ndarray:
         """
@@ -85,12 +88,12 @@ class INSTRUCTION_SPEECH(Dataset):
             if not mirror:
                 style_instruction = item['trg_instruct']
                 src_path = f"{self.base_path}/{item['audio_path']}"
-                trg_path = item['vc_path']
+                trg_path = f"{self.base_path}/{item['vc_path']}"
                 src_name = Path(src_path).stem
                 trg_name = Path(trg_path).stem
             else:
                 style_instruction = item['src_instruct']
-                src_path = item['vc_path']
+                src_path = f"{self.base_path}/{item['vc_path']}"
                 trg_path = f"{self.base_path}/{item['audio_path']}"
                 src_name = Path(src_path).stem
                 trg_name = Path(trg_path).stem

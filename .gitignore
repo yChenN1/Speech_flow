@@ -22,4 +22,7 @@ checkpoints/
 Thumbs.db
 
 # 你自己的其他运行中间产物（按需添加）
+exp/
+pretrained/
+
 

@@ -67,12 +67,13 @@ def train(args) -> None:
     
     # Configs
     configs = parse_yaml(config_path)
+    print(configs)
     # 得到当天的日期 按照0808的格式
     import time
     date = time.strftime("%m%d", time.localtime())
     # Checkpoints directory
     config_name = Path(config_path).stem
-    save_dir =Path(f"{configs['save_dir']}/{date}")
+    save_dir =Path(f"{configs['save_dir']}/{args.exp_name}")
     ckpts_dir = Path(save_dir, "checkpoints", filename, config_name)
     Path(ckpts_dir).mkdir(parents=True, exist_ok=True)
 
@@ -124,7 +125,7 @@ def train(args) -> None:
     )
 
     vocoder = Mel_BigVGAN_22kHz().to(accelerator.device)
-    text_encoder = T5EncoderModel.from_pretrained('t5-base').to(accelerator.device)
+    text_encoder = T5EncoderModel.from_pretrained('/mnt/bn/tanman-yg/chenqi/code/Speech_flow/pretrained/t5-base/snapshots/a9723ea7f1b39c1eae772870f3b547bf6ef7e6c1').to(accelerator.device)
     vocoder.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
@@ -136,7 +137,8 @@ def train(args) -> None:
 
     # Train
     total_steps = configs["train"]["training_steps"]  # 总步数
-    for step, data in enumerate(tqdm(train_dataloader, total=total_steps, desc="Training", unit="iters")):
+    progress_bar = tqdm(train_dataloader, total=total_steps, desc="Training", unit="iters")
+    for step, data in enumerate(progress_bar):
         # ------ 1. Data preparation ------
         # 1.1 Transform data into latent representations and conditions
         # target, cond_dict, _ = data_transform(data)
@@ -195,15 +197,23 @@ def train(args) -> None:
             # 2.1 Forward
             model.train()
             vt = model(t=t, x=xt, cond_dict=cond_dict)
-            
+            # __import__('ipdb').set_trace()
+
             # 2.2 Loss
-            loss = torch.mean((vt - ut) ** 2)
+            loss_mask = torch.zeros_like(vt)
+            for i, length in enumerate(cond_dict['trg_valid_length']):
+                length_int = int(length.item())  # 转成 Python int
+                loss_mask[i, :, :length_int] = 1
+            loss = (((vt - ut) ** 2) * loss_mask).sum() / (loss_mask.sum() + 1e-8)
 
             # 2.3 Optimize
             optimizer.zero_grad()  # Reset all parameter.grad to 0
             accelerator.backward(loss)  # Update all parameter.grad
             optimizer.step()  # Update all parameters based on all parameter.grad
             update_ema(ema_model=ema, model=accelerator.unwrap_model(model))
+
+            lr = optimizer.param_groups[0]["lr"]
+            progress_bar.set_postfix({"loss": f"{loss.item():.4f}", "lr": f"{lr:.2e}", "average_len": f"{loss_mask.sum():.0f}/{loss_mask.numel():.0f}"})
 
         # 2.4 Learning rate scheduler
         if scheduler:
@@ -279,6 +289,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path of config yaml.")
     parser.add_argument("--no_log", action="store_true", default=False)
+    parser.add_argument("--exp_name", type=str, default="")
     args = parser.parse_args()
 
     train(args)

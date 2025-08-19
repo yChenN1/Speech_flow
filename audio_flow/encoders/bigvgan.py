@@ -12,7 +12,7 @@ class Mel_BigVGAN_22kHz(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.model = bigvgan.BigVGAN.from_pretrained('nvidia/bigvgan_v2_22khz_80band_256x', use_cuda_kernel=False)
+        self.model = bigvgan.BigVGAN.from_pretrained('/mnt/bn/tanman-yg/chenqi/code/Speech_flow/pretrained/nvidia/bigvgan_v2_22khz_80band_256x/snapshots/633ff708ed5b74903e86ff1298cf4a98e921c513', use_cuda_kernel=False)
         self.model.remove_weight_norm()
 
     def encode(self, audio: Tensor) -> Tensor:

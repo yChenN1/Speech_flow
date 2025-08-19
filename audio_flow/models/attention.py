@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from audio_flow.models.rope import apply_rope
+from audio_flow.models.rope import apply_rope, apply_rope2d
 
 
 def modulate(x: Tensor, shift: Tensor, scale: Tensor) -> Tensor:
@@ -45,6 +45,7 @@ class Block(nn.Module):
         rope: Tensor,
         mask: None | Tensor,
         emb: Tensor,
+        grid_size
     ) -> torch.Tensor:
         r"""Self attention block.
 
@@ -62,7 +63,7 @@ class Block(nn.Module):
             self.adaLN_modulation(emb).chunk(6, dim=2)  # 6 x (b, t, d)
 
         h = modulate(self.att_norm(x), shift_msa, scale_msa)  # (b, t, d)
-        x = x + gate_msa * self.att(h, rope, mask)  # (b, t, d)
+        x = x + gate_msa * self.att(h, rope, mask, grid_size)  # (b, t, d)
         
         h = modulate(self.ffn_norm(x), shift_mlp, scale_mlp)  # (b, t, d)
         x = x + gate_mlp * self.mlp(h)  # (b, t, d)
@@ -114,6 +115,7 @@ class SelfAttention(nn.Module):
         x: Tensor,
         rope: Tensor,
         mask: Tensor,
+        grid_size,
     ) -> Tensor:
         r"""Causal self attention.
 
@@ -141,8 +143,18 @@ class SelfAttention(nn.Module):
         v = v.view(B, T, self.n_head, D // self.n_head)
         # q, k, v shapes: (b, t, h, head_dim)
 
-        q = apply_rope(q, rope)
-        k = apply_rope(k, rope)
+        if rope is not None:
+            if isinstance(rope, Tensor):
+                if rope.shape[-1] == 2:
+                    q = apply_rope(q, rope)
+                    k = apply_rope(k, rope)
+                elif rope.shape[-1] == (D // self.n_head):
+                    q = apply_rope2d(q, grid_size, rope)
+                    k = apply_rope2d(k, grid_size, rope)
+            elif isinstance(rope, nn.Module):
+                q = rope.apply_nd(q, grid_size)
+                k = rope.apply_nd(k, grid_size)
+            
         # q, k shapes: (b, t, h, head_dim)
 
         k = k.transpose(1, 2)

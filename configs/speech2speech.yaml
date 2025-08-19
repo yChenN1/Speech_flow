@@ -4,12 +4,12 @@ clip_duration: 5.
 
 train_datasets:
     INSTRUCTION_SPEECH:
-        root: "/mnt/fast/nobackup/scratch4weeks/yc01815/Speech_gen_dataset/gen_speech_v1/train_instruct.csv"
+        root: "/mnt/bn/tanman-yg/chenqi/data_recovered_from_parquet.csv"
         split: "train"
 
 test_datasets:
     INSTRUCTION_SPEECH:
-        root: "/mnt/fast/nobackup/scratch4weeks/yc01815/Speech_gen_dataset/gen_speech_v1/valid_instruct.csv"
+        root: "/mnt/bn/tanman-yg/chenqi/data_recovered_from_parquet_eval.csv"
         split: "test"
 
 sampler: InfiniteSampler
@@ -17,7 +17,8 @@ sampler: InfiniteSampler
 data_transform: 
     name: Speech2Speech_Mel
 
-save_dir: "/mnt/fast/nobackup/scratch4weeks/yc01815/audio_flow_ata_attn"
+save_dir: "/mnt/bn/tanman-yg/chenqi/code/Speech_flow/exp/speech2speech"
+exp_name: ""
 
 model:
     name: BSRoformerMel
@@ -32,8 +33,9 @@ model:
     in_channels: 1
     patch_size: [4, 4]
     n_layer: 12
-    n_head: 12
-    n_embd: 384
+    n_head: 32
+    n_embd: 1024
+    rope: 2dqq
 
 train:
     device: cuda

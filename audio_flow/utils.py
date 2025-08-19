@@ -84,16 +84,11 @@ class Logmel:
         self.sr = sr
         self.n_fft = 2048
         self.hop_length = round(sr * 0.01)
-        self.n_mels = 128
+        self.n_mels = 80
 
     def __call__(self, audio: np.array) -> np.array:
         
-        logmel = np.log10(librosa.feature.melspectrogram(
-            y=audio, 
-            sr=self.sr, 
-            n_fft=self.n_fft, 
-            hop_length=self.hop_length, 
-            n_mels=self.n_mels
-        )).T
+        mel = librosa.feature.melspectrogram(y=audio, sr=self.sr, n_fft=self.n_fft, hop_length=self.hop_length, n_mels=self.n_mels)
+        logmel = np.log10(mel).T
 
         return logmel

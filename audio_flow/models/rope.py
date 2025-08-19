@@ -1,4 +1,27 @@
 import torch
+from typing import Optional, Tuple
+from torch import broadcast_tensors, nn
+from einops import rearrange
+from rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
+
+def build_rope2d(head_dim: int, T: int, F: int
+) -> torch.Tensor:
+    pos_emb = RotaryEmbedding(
+        dim = head_dim // 2,
+        freqs_for = 'pixel',
+        max_freq = 1024
+    )
+    freqs = pos_emb.get_axial_freqs(T, F)
+    return freqs
+
+def apply_rope2d(x: torch.Tensor, grid_size, rope_cache: torch.Tensor) -> torch.Tensor:
+
+    T, F = grid_size
+    x_out = rearrange(x, "b (T F) h d -> b h T F d", T=T, F=F)
+    x_out = apply_rotary_emb(rope_cache, x_out.float()).to(x.dtype)
+    x_out = rearrange(x_out, "b h T F d -> b (T F) h d")
+
+    return x_out
 
 
 def build_rope(

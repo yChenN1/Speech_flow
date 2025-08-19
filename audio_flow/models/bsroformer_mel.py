@@ -12,7 +12,8 @@ from audio_flow.models.attention import Block
 from audio_flow.models.embedders import LabelEmbedder, MlpEmbedder, TimestepEmbedder
 from audio_flow.models.pad import pad1d, pad2d, unpad2d
 from audio_flow.models.patch import Patch1D, Patch2D
-from audio_flow.models.rope import build_rope
+from audio_flow.models.rope import build_rope, build_rope2d
+from audio_flow.models.rope_qq import RoPE
 
 
 @dataclass
@@ -31,10 +32,11 @@ class Config:
     in_channels: int = 1
 
     # Transformer params
-    patch_size: tuple[int, int] = (12, 4)
+    patch_size: tuple[int, int] = (4, 4)
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 384
+    rope: bool = True
 
 
 class BSRoformerMel(nn.Module):
@@ -95,10 +97,10 @@ class BSRoformerMel(nn.Module):
         self.f_blocks = nn.ModuleList(Block(config) for _ in range(config.n_layer))
 
         # Build RoPE cache
-        t_rope = build_rope(seq_len=8192, head_dim=self.head_dim)
-        f_rope = build_rope(seq_len=2048, head_dim=self.head_dim)
-        self.register_buffer(name="t_rope", tensor=t_rope)  # shape: (t, head_dim/2, 2)
-        self.register_buffer(name="f_rope", tensor=f_rope)  # shape: (t, head_dim/2, 2)
+        # t_rope = build_rope(seq_len=8192, head_dim=self.head_dim)
+        # f_rope = build_rope(seq_len=2048, head_dim=self.head_dim)
+        # self.register_buffer(name="t_rope", tensor=t_rope)  # shape: (t, head_dim/2, 2)
+        # self.register_buffer(name="f_rope", tensor=f_rope)  # shape: (t, head_dim/2, 2)
         
     def forward(
         self, 
@@ -169,6 +171,7 @@ class BSRoformerMel(nn.Module):
             emb = emb + cld[:, :, None, :]
 
         if self.config.ata:
+
             # cond_mel: (B, D, T_src, F)
             cond_mel = cond_dict['src_audio']
             cond_mel, _, _ = pad2d(cond_mel, self.patch_size)
@@ -199,26 +202,34 @@ class BSRoformerMel(nn.Module):
             # 拼接特征 & 拼接 mask（沿着时间 token 维）
             x = torch.cat([cond_mel, x], dim=2)                              # (B, D, T_trg_tokens+T_src_tokens, F_tokens)
             mask = torch.cat([src_mask, trg_mask], dim=1)                    # (B, T_trg_tokens+T_src_tokens)
-            B, C, newH, newW = x.shape
-            mask = mask.bool().unsqueeze(-1).expand(B, newH, newW).reshape(B, newH*newW)
-            attn_mask = mask[:, None, None, :].expand(B, 1, newH*newW, newH*newW)
-            # __import__('ipdb').set_trace()
+            B, C, newT, newF = x.shape
+            mask = mask.bool().unsqueeze(-1).expand(B, newT, newF).reshape(B, newT*newF)
+            attn_mask = mask[:, None, None, :].expand(B, 1, newT*newF, newT*newF)
+            
+            rope = None
+            if self.config.rope is not None:
+                if self.config.rope == "1d":
+                    rope = build_rope(seq_len=newT*newF, head_dim=self.head_dim).to(x.device).float()
+                elif self.config.rope == "2d":
+                    rope = build_rope2d(head_dim=self.head_dim, T=newT, F=newF).to(x.device).float()
+                elif self.config.rope == "2dqq":
+                    rope = RoPE(head_dim=self.head_dim // 2, max_len = max(newT, newF), device=x.device)
+                else:
+                    raise NotImplementedError
 
             x = rearrange(x, 'b d t f -> b (t f) d')
-            emb = emb[:, :, 0, 0].unsqueeze(1).expand(B, newH*newW, self.config.n_embd)
+            emb = emb[:, :, 0, 0].unsqueeze(1).expand(B, newT*newF, self.config.n_embd)
 
             for t_block in self.t_blocks:
-                try:
-                    x = t_block(x, self.t_rope, mask=attn_mask, emb=emb)  # shape: (b*f, t, d)
-                except:
-                    __import__('ipdb').set_trace()
-            x = rearrange(x, 'b (t f) d -> b d t f', b=B, t=newH, f=newW)  # shape: (b, d, t, f)
+                # try:
+                x = t_block(x, rope, mask=attn_mask, emb=emb, grid_size=(newT, newF))  # shape: (b*f, t, d)
+                # except:
+                #     __import__('ipdb').set_trace()
+            x = rearrange(x, 'b (t f) d -> b d t f', b=B, t=newT, f=newF)  # shape: (b, d, t, f)
 
             # --- 3. Unpatchify ---
             x = self.patch_x.inverse(x[:, :, T_src_tokens:, :])  # shape: (b, c, t, f)
             x = unpad2d(x, pad_t, pad_f)  # shape: (b, c, t, f)
-
-
 
         else:
             # --- 2. Transformer along time and frequency axes ---
